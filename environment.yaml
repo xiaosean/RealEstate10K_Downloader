@@ -1,0 +1,16 @@
+name: realestate10k
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - requests
+  - numpy
+  - opencv
+  - tqdm
+  - pillow
+  - pip
+  - pytube
+  - pip:
+      - imageio-ffmpeg
+      - moviepy

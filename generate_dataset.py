@@ -3,9 +3,13 @@ import sys
 import glob
 import subprocess
 import datetime
+import argparse
 
-from skimage import io
-from scipy.misc import imresize
+# from skimage import io
+# from scipy.misc import imresize
+from PIL import Image
+import numpy as np
+
 
 from multiprocessing import Pool
 from pytube import YouTube
@@ -28,7 +32,7 @@ class Data:
         return len(self.list_seqnames)
 
 
-def process(data, seq_id, videoname, output_root):
+def process(data, seq_id, videoname, output_root, resized_height, resized_width):
     seqname = data.list_seqnames[seq_id]
     if not os.path.exists(output_root + seqname):
         os.makedirs(output_root + seqname)
@@ -54,13 +58,16 @@ def process(data, seq_id, videoname, output_root):
 
     png_list = glob.glob(output_root+"/"+seqname+"/*.png")
 
+    # for pngname in png_list:
+    #     image = io.imread(pngname)
+    #     if int(image.shape[1]/2) < 500:
+    #         break
+    #     image_resized = resize(image, (resized_height, resized_width), anti_aliasing=True)
+    #     io.imsave(pngname, image_resized)
     for pngname in png_list:
-        image = io.imread(pngname)
-        if int(image.shape[1]/2) < 500:
-            break
-        image = imresize(image, (int(image.shape[0]/2), int(image.shape[1]/2)), interp='bilinear')
-        io.imsave(pngname, image)
-        
+        image = Image.open(pngname)
+        image_resized = image.resize((resized_width, resized_height), Image.ANTIALIAS)
+        image_resized.save(pngname)
         # In my case, the same issue happened.
         # https://github.com/skvark/opencv-python/issues/69
         # img = cv2.imread(pngname, 1)
@@ -75,13 +82,14 @@ def wrap_process(list_args):
     return process(*list_args)
 
 class DataDownloader:
-    def __init__ (self, dataroot, mode='test'):
+    def __init__(self, dataroot, mode='test', resized_height=360, resized_width=640):
         print("[INFO] Loading data list ... ",end='')
         self.dataroot = dataroot
         self.list_seqnames = sorted(glob.glob(dataroot + '/*.txt'))
         self.output_root = './dataset/' + mode + '/'
         self.mode =  mode
-
+        self.resized_height = resized_height
+        self.resized_width = resized_width
         self.isDone = False
         if not os.path.exists(self.output_root):
             os.makedirs(self.output_root)
@@ -133,9 +141,9 @@ class DataDownloader:
                 # sometimes this fails because of known issues of pytube and unknown factors
                 yt = YouTube(data.url)
                 stream = yt.streams.first()
-                stream.download('./','current_'+mode)
+                stream.download('./','current_'+self.mode)
             except :
-                failure_log = open('failed_videos_'+mode+'.txt', 'a')
+                failure_log = open('failed_videos_'+self.mode+'.txt', 'a')
                 for seqname in data.list_seqnames:
                     failure_log.writelines(seqname + '\n')
                 failure_log.close()
@@ -144,20 +152,24 @@ class DataDownloader:
             sleep(1)
 
             videoname_candinate_list = glob.glob('./*')
+            videoname = None
             for videoname_candinate in videoname_candinate_list:
-                if videoname_candinate.split('.')[-2] == '/current_'+mode:
+                if videoname_candinate.split('.')[-2] == '/current_' + self.mode:
                     videoname = videoname_candinate
+                    break
 
-            if len(data) == 1: # len(data) is len(data.list_seqnames)
-                process(data, 0, videoname, self.output_root)
+            if videoname is None:
+                print("[ERROR] Video file not found for url:", data.url)
+                continue
+
+            if len(data) == 1:  # len(data) is len(data.list_seqnames)
+                process(data, 0, videoname, self.output_root, self.resized_height, self.resized_width)
             else:
                 with Pool(processes=4) as pool:
-                    pool.map(wrap_process, [(data, seq_id, videoname, self.output_root) for seq_id in range(len(data))])
-                # list_flags = joblib.Parallel(n_jobs=4,backend="multiprocessing")([joblib.delayed(process)(data, seq_id, videoname, self.output_root) for seq_id in range(len(data))])
+                    pool.map(wrap_process, [(data, seq_id, videoname, self.output_root, self.resized_height, self.resized_width) for seq_id in range(len(data))])
 
             # remove videos
-            command = "rm " + videoname 
-            os.system(command)
+            os.remove(videoname)
 
             if self.isDone:
                 return False
@@ -179,21 +191,16 @@ class DataDownloader:
 
 if __name__ == "__main__":
 
-    if len(sys.argv) != 2:
-        print("usage: this.py [test or train]")
-        quit()
 
-    if sys.argv[1] == "test":
-        mode = "test"
-    elif sys.argv[1] == "train":
-        mode = "train"
-    else:
-        print("invalid mode")
-        quit()
+    parser = argparse.ArgumentParser(description="RealEstate10K Downloader")
+    parser.add_argument("mode", choices=["test", "train"], help="Mode: test or train")
+    parser.add_argument("--height", type=int, default=256, help="Height of resized images")
+    parser.add_argument("--width", type=int, default=384, help="Width of resized images")
 
-    dataroot = "./RealEstate10K/" + mode
-    downloader = DataDownloader(dataroot, mode)
+    args = parser.parse_args()
 
+    dataroot = "./RealEstate10K/" + args.mode
+    downloader = DataDownloader(dataroot, args.mode, args.height, args.width)
     downloader.Show()
     isOK = downloader.Run()
 
@@ -201,5 +208,3 @@ if __name__ == "__main__":
         print("Done!")
     else:
         print("Failed")
-
-

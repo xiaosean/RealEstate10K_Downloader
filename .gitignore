@@ -4,7 +4,8 @@ RealEstate10K.tar.gz
 generate_dataset_bk.py
 dataset
 compute_size.py
-
+current_train
+current_test
 *.png
 *.txt
 *.mp4
