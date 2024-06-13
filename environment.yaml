@@ -10,7 +10,7 @@ dependencies:
   - tqdm
   - pillow
   - pip
-  - pytube
+  - yt-dlp
   - pip:
       - imageio-ffmpeg
       - moviepy
